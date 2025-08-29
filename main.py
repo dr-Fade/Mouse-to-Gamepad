@@ -7,10 +7,10 @@ from config import Config
 
 
 ABS_BOUNDARY = 32767
+SENSITIVITY_SCALING = 1 / 50
 
 
 def create_gamepad_device(config: Config) -> None:
-    """Create a uinput device that emulates a gamepad with left stick"""
     events = {
         ecodes.EV_ABS: [
             (ecodes.ABS_X, (0, -ABS_BOUNDARY, ABS_BOUNDARY, 0, 0, 0)),
@@ -41,52 +41,42 @@ def create_gamepad_device(config: Config) -> None:
     return device
 
 
-def map_mouse_to_gamepad_stick(config: Config):
-    """Main mapping function with configurable parameters"""
-    # Create virtual gamepad device
+def map_mouse_to_gamepad_stick(config: Config) -> None:
     gamepad = create_gamepad_device(config)
-
-    # Open the mouse device for reading
     mouse = InputDevice(config.mouse_device)
 
-    # set sensitivity and adjust the scale
-    sensitivity: float = config.sensitivity * ABS_BOUNDARY / 50
+    sensitivity: float = config.sensitivity * ABS_BOUNDARY * SENSITIVITY_SCALING
 
-    # Store previous mouse position
-    prev_x, prev_y = 0, 0
+    x, y = 0, 0
 
     try:
-        # Read events from mouse
         for event in mouse.read_loop():
-            if event.type == ecodes.EV_REL and event.code in [ecodes.ABS_X, ecodes.ABS_Y]:
-                # Calculate movement delta with sensitivity
+            if event.type == ecodes.EV_REL:
                 if event.code == ecodes.ABS_X:
-                    current_x = int(event.value * sensitivity)
-                    prev_x = current_x
+                    x = int(event.value * sensitivity)
+                elif event.code == ecodes.ABS_Y:
+                    y = int(event.value * sensitivity)
                 else:
-                    current_x = prev_x
+                    continue
 
-                if event.code == ecodes.ABS_Y:
-                    current_y = int(event.value * sensitivity)
-                    prev_y = current_y
+                gamepad.write(ecodes.EV_ABS, ecodes.ABS_X, x)
+                gamepad.write(ecodes.EV_ABS, ecodes.ABS_Y, y)
+                gamepad.syn()
+
+            if event.type == ecodes.EV_KEY:
+                if event.code == ecodes.BTN_LEFT:
+                    key = ecodes.BTN_A
+                elif event.code == ecodes.BTN_RIGHT:
+                    key = ecodes.BTN_B
                 else:
-                    current_y = prev_y
+                    continue
 
-                # Send the gamepad stick position
-                print(
-                    f"type:{event.type} - code:{event.code} - value:{event.value}")
-                print(
-                    f"ecodes.EV_ABS, ecodes.ABS_X, {current_x:=} ({prev_x:=})")
-                print(
-                    f"ecodes.EV_ABS, ecodes.ABS_Y, {current_y:=} ({prev_y:=})")
-                gamepad.write(ecodes.EV_ABS, ecodes.ABS_X, current_x)
-                gamepad.write(ecodes.EV_ABS, ecodes.ABS_Y, current_y)
+                gamepad.write(ecodes.EV_KEY, key, event.value)
                 gamepad.syn()
 
     except KeyboardInterrupt:
         print("\nExiting...")
     finally:
-        # Clean up
         mouse.close()
         gamepad.close()
 
