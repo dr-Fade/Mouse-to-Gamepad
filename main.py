@@ -3,14 +3,14 @@ from pathlib import Path
 
 from evdev import InputDevice, UInput, ecodes
 
-from config import Config
+from config import Config, DEFAULT_CONFIG_FILE
 
 
 ABS_BOUNDARY = 32767
-SENSITIVITY_SCALING = 1 / 50
+SENSITIVITY_SCALING = 1 / 25
 
 
-def create_gamepad_device(config: Config) -> None:
+def create_gamepad_device(config: Config) -> UInput:
     events = {
         ecodes.EV_ABS: [
             (ecodes.ABS_X, (0, -ABS_BOUNDARY, ABS_BOUNDARY, 0, 0, 0)),
@@ -43,13 +43,17 @@ def create_gamepad_device(config: Config) -> None:
 
 def map_mouse_to_gamepad_stick(config: Config) -> None:
     gamepad = create_gamepad_device(config)
+    print(f"Created new virtual gamepad: {gamepad.name} ({gamepad.device.path}).")
+
     mouse = InputDevice(config.mouse_device)
 
-    sensitivity: float = config.sensitivity * ABS_BOUNDARY * SENSITIVITY_SCALING
+    sensitivity: float = max(0, min(config.sensitivity, 1)) * ABS_BOUNDARY * SENSITIVITY_SCALING
 
     x, y = 0, 0
 
     try:
+        print(f"Listening to events from {mouse.name}...")
+        print("Press Ctrl+C to exit.")
         for event in mouse.read_loop():
             if event.type == ecodes.EV_REL:
                 if event.code == ecodes.ABS_X:
@@ -84,11 +88,13 @@ def map_mouse_to_gamepad_stick(config: Config) -> None:
 def main():
     parser = argparse.ArgumentParser(
         description="Map mouse movements to a virtual gamepad")
-    parser.add_argument("config", help="Path to configuration file")
+    parser.add_argument("--config-path", help="Path to configuration file", required=False, default=DEFAULT_CONFIG_FILE)
 
     args = parser.parse_args()
 
-    config = Config.from_file(Path(args.config))
+    config = Config.from_file(Path(args.config_path))
+
+    print(f"Loaded config: {config.to_json()}")
 
     map_mouse_to_gamepad_stick(config)
 
